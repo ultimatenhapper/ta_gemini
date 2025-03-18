@@ -33,13 +33,18 @@ start_date_default = end_date_default - timedelta(days=365)
 start_date = st.sidebar.date_input("Start Date", value=start_date_default)
 end_date = st.sidebar.date_input("End Date", value=end_date_default)
 
-st.sidebar.subheader("Technical Indicators")
-indicators = st.sidebar.multiselect(
-    "Select Indicators:",
-    ["20-Day SMA", "20-Day EMA", "20-Day Bollinger Bands", "VWAP","RSI", "MACD", "OBV"],
-    default=["20-Day SMA"]
-)
+st.sidebar.subheader("Change between technical and fundamental analysis")
+options = ["Technical", "Fundamental"]
+analysis_type = st.sidebar.radio("Select one:", options)
 
+if analysis_type == "Technical":
+    st.sidebar.subheader("Technical Indicators")
+    indicators = st.sidebar.multiselect(
+        "Select Indicators:",
+        ["20-Day SMA", "20-Day EMA", "20-Day Bollinger Bands", "VWAP","RSI", "MACD", "OBV"],
+        default=["20-Day SMA"]
+    )
+    
 if st.sidebar.button("Fetch Data"):
     stock_data = {}
     for ticker in tickers:
@@ -136,8 +141,58 @@ if st.sidebar.button("Analyze") and "stock_data" in st.session_state and st.sess
                 case "OBV":
                     obv = calculate_obv(close_prices, data['Volume'][ticker])
                     fig.add_trace(go.Scatter(x=index, y=obv, mode='lines', name='OBV'))
-        for ind in indicators:
-            add_indicator(ind)
+        def add_fundamental_data(ticker, start_date=start_date, end_date=end_date, indicators=["Revenue", "Net Income", "EPS"]):
+            """
+            Fetches fundamental data from yfinance and plots specified indicators.
+
+            Args:
+                ticker (str): The stock ticker symbol (e.g., "AAPL").
+                start_date (str): Start date for data retrieval (YYYY-MM-DD).
+                end_date (str): End date for data retrieval (YYYY-MM-DD).
+                indicators (list): List of fundamental indicators to plot.
+            """
+
+            try:
+                # Fetch fundamental data from yfinance
+                stock = yf.Ticker(ticker)
+                income_statement = stock.income_stmt
+                if income_statement.empty:
+                    print(f"Error: No income statement data found for {ticker}.")
+                    return
+
+                # Prepare data for plotting
+                dates = income_statement.columns
+
+                fig = go.Figure()
+
+                for indicator in indicators:
+                    if indicator in income_statement.index:
+                        values = income_statement.loc[indicator].values
+                        fig.add_trace(go.Scatter(x=dates, y=values, mode='lines+markers', name=indicator))
+                    elif indicator == "EPS": #special case for EPS
+                        if "BasicEPS" in income_statement.index:
+                            values = income_statement.loc["BasicEPS"].values
+                            fig.add_trace(go.Scatter(x=dates, y=values, mode='lines+markers', name="EPS (Basic)"))
+                        elif "DilutedEPS" in income_statement.index:
+                            values = income_statement.loc["DilutedEPS"].values
+                            fig.add_trace(go.Scatter(x=dates, y=values, mode='lines+markers', name="EPS (Diluted)"))
+                        else:
+                            print(f"Warning: EPS data not found for {ticker}.")
+                    else:
+                        print(f"Warning: Indicator '{indicator}' not found in income statement.")
+
+                fig.update_layout(title=f"Fundamental Data for {ticker}", xaxis_title="Date", yaxis_title="Value")
+
+            except Exception as e:
+                print(f"An error occurred: {e}") 
+
+            return fig
+           
+        if analysis_type == "Technical":                
+            for ind in indicators:
+                add_indicator(ind)
+        else:
+            fig = add_fundamental_data(ticker)
 
         fig.update_layout(xaxis_rangeslider_visible=False)
         # fig.update_layout(
